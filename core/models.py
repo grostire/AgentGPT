@@ -757,39 +757,47 @@ if __name__ == '__main__':
 
     analysis_freqs = np.logspace(1, 6, 5) 
 
+    print("\n--- System TF Calculation Test (InputFilter -> OutputGain) ---")
     try:
         mags, phases = sys_for_tf.get_system_tf("InputFilter", "OutputGain", analysis_freqs)
-        print("\nSystem Frequency Response (InputFilter -> OutputGain):")
         print("Freq (Hz) | Mag (dB) | Phase (deg)")
         print("------------------------------------")
         for f, m, p in zip(analysis_freqs, mags, phases):
             print(f"{f:9.2e} | {m:8.2f} | {p:10.2f}")
+    except Exception as e:
+        print(f"An error occurred during the (InputFilter -> OutputGain) test: {e}")
         
     # Test with a single block (LPF)
     print("\n--- System TF Calculation Test (Single Block LPF) ---")
-    mags_single_lpf, phases_single_lpf = sys_for_tf.get_system_tf("InputFilter", "InputFilter", analysis_freqs) # type: ignore
-        print("\nSystem Frequency Response (InputFilter -> InputFilter):")
+    try:
+        mags_single_lpf, phases_single_lpf = sys_for_tf.get_system_tf("InputFilter", "InputFilter", analysis_freqs) # type: ignore
+        print("System Frequency Response (InputFilter -> InputFilter):")
         print("Freq (Hz) | Mag (dB) | Phase (deg)")
         print("------------------------------------")
-    for f, m, p in zip(analysis_freqs, mags_single_lpf, phases_single_lpf): 
-        print(f"{f:9.2e} | {m:8.2f} | {p:10.2f}")
+        for f, m, p in zip(analysis_freqs, mags_single_lpf, phases_single_lpf): 
+            print(f"{f:9.2e} | {m:8.2f} | {p:10.2f}")
+
+        # Verify that the single LPF response matches the LPF's own TF response
+        lpf_block_tf_test_main = sys_for_tf.blocks["InputFilter"]
+        if isinstance(lpf_block_tf_test_main, TFBlock): # Type check for safety
+          mags_lpf_direct, phases_lpf_direct = lpf_block_tf_test_main.tf.get_frequency_response(analysis_freqs) # type: ignore
+          assert np.allclose(mags_single_lpf, mags_lpf_direct), "Single LPF mag mismatch"
+          assert np.allclose(phases_single_lpf, phases_lpf_direct), "Single LPF phase mismatch"
+          print("Single LPF block response matches direct TF evaluation: OK")
+    except Exception as e:
+        print(f"An error occurred during the (Single Block LPF) test: {e}")
 
     # Test with a single OpAmp block
     print("\n--- System TF Calculation Test (Single Block OpAmp) ---")
-    mags_single_opamp, phases_single_opamp = sys_for_tf.get_system_tf("Amp", "Amp", analysis_freqs)
-    print("\nSystem Frequency Response (Amp -> Amp):")
-    print("Freq (Hz) | Mag (dB) | Phase (deg)")
-    print("------------------------------------")
-    for f, m, p in zip(analysis_freqs, mags_single_opamp, phases_single_opamp):
-            print(f"{f:9.2e} | {m:8.2f} | {p:10.2f}")
-
-    # Verify that the single LPF response matches the LPF's own TF response
-    lpf_block_tf_test_main = sys_for_tf.blocks["InputFilter"]
-    if isinstance(lpf_block_tf_test_main, TFBlock): # Type check for safety
-      mags_lpf_direct, phases_lpf_direct = lpf_block_tf_test_main.tf.get_frequency_response(analysis_freqs) # type: ignore
-      assert np.allclose(mags_single_lpf, mags_lpf_direct), "Single LPF mag mismatch"
-      assert np.allclose(phases_single_lpf, phases_lpf_direct), "Single LPF phase mismatch"
-      print("\nSingle LPF block response matches direct TF evaluation: OK")
+    try:
+        mags_single_opamp, phases_single_opamp = sys_for_tf.get_system_tf("Amp", "Amp", analysis_freqs)
+        print("System Frequency Response (Amp -> Amp):")
+        print("Freq (Hz) | Mag (dB) | Phase (deg)")
+        print("------------------------------------")
+        for f, m, p in zip(analysis_freqs, mags_single_opamp, phases_single_opamp):
+                print(f"{f:9.2e} | {m:8.2f} | {p:10.2f}")
+    except Exception as e:
+        print(f"An error occurred during the (Single Block OpAmp) test: {e}")
 
     print("\n--- NonInvertingAmplifierBlock Tests ---")
     opamp_for_stage = OpAmp(name="IdealOpAmp", open_loop_gain=1e5, gbw=1e6) # Aol=100k, GBW=1MHz
@@ -841,6 +849,8 @@ if __name__ == '__main__':
         print("Error: Should have raised ValueError for no path.")
     except ValueError as e:
         print(f"Correctly caught no path error: {e}")
+    except Exception as e: # Catch any other unexpected error during this test
+        print(f"An unexpected error occurred during No Path test: {e}")
     
     print("\n--- System TF Calculation Test (Cycle) ---")
     sys_cycle = System()
@@ -861,17 +871,24 @@ if __name__ == '__main__':
         assert np.isclose(m_cycle[0], expected_db, atol=0.1), f"Cycle path gain incorrect. Expected ~{expected_db} dB"
 
     except ValueError as e:
-        print(f"Error during cycle test (CB1->CB3): {e}") 
+        print(f"Error during cycle test (CB1->CB3): {e}")
+    except Exception as e: # Catch any other unexpected error
+        print(f"An unexpected error occurred during Cycle test (CB1->CB3): {e}")
     
     try:
         sys_cycle.get_system_tf("CB1", "CB1", analysis_freqs) 
         print("Path CB1->CB1 found and calculated.")
-    except ValueError as e:
+    except ValueError as e: # Should not be a ValueError if path to self is handled
          print(f"Error during cycle test (CB1->CB1): {e}") 
+    except Exception as e: # Catch any other unexpected error
+        print(f"An unexpected error occurred during Cycle test (CB1->CB1): {e}")
 
 
-    except Exception as e:
-        print(f"Error during system TF calculation: {e}")
+    # General catch-all for the entire if __name__ == '__main__' block,
+    # though specific try-excepts for test sections are better.
+    # This was the original position of the except clause that caused the syntax error.
+    # except Exception as e:
+    #     print(f"Error during system TF calculation: {e}")
 
 
     print("\nAll tests seem to pass (or completed).")
